@@ -13,20 +13,25 @@
             box-sizing: border-box;
             -webkit-touch-callout: none;
             -webkit-user-select: none;
+            user-select: none;
         }
 
         html, body {
             width: 100%;
             height: 100%;
+            height: 100vh;
+            height: 100dvh;
             background: #000;
             overflow: hidden;
             position: fixed;
+            touch-action: none;
         }
 
         canvas {
             display: block;
             width: 100%;
             height: 100%;
+            touch-action: none;
         }
 
         .ui {
@@ -46,12 +51,14 @@
             transform: translateX(-50%);
             background: rgba(99, 102, 241, 0.2);
             backdrop-filter: blur(10px);
-            padding: 8px 16px;
+            padding: 10px 20px;
             border-radius: 8px;
             color: #6366f1;
             font-weight: bold;
-            font-size: 14px;
+            font-size: 16px;
             pointer-events: auto;
+            touch-action: auto;
+            z-index: 101;
         }
 
         .controls {
@@ -62,41 +69,68 @@
             display: flex;
             gap: 10px;
             pointer-events: auto;
+            touch-action: auto;
+            z-index: 101;
         }
 
         button {
-            padding: 12px 20px;
+            padding: 14px 24px;
             background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
             color: white;
             border: none;
             border-radius: 8px;
             font-weight: bold;
-            font-size: 12px;
+            font-size: 14px;
             cursor: pointer;
             touch-action: manipulation;
             -webkit-appearance: none;
             appearance: none;
+            min-width: 120px;
+            min-height: 44px;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
         }
 
         button:active {
-            transform: scale(0.95);
+            transform: scale(0.98);
+            box-shadow: 0 2px 10px rgba(99, 102, 241, 0.2);
         }
 
         #resetBtn {
             background: linear-gradient(135deg, #ec4899 0%, #f43f5e 100%);
+            box-shadow: 0 4px 15px rgba(236, 72, 153, 0.4);
+        }
+
+        #resetBtn:active {
+            box-shadow: 0 2px 10px rgba(236, 72, 153, 0.2);
         }
 
         .info {
             position: absolute;
-            bottom: 80px;
+            bottom: 90px;
             left: 10px;
             right: 10px;
             background: rgba(99, 102, 241, 0.1);
-            padding: 10px;
+            backdrop-filter: blur(10px);
+            padding: 12px;
             border-radius: 8px;
             color: #a5b4fc;
-            font-size: 11px;
+            font-size: 12px;
             pointer-events: auto;
+            touch-action: auto;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            z-index: 101;
+        }
+
+        .gesture-hint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
         }
     </style>
 </head>
@@ -106,13 +140,18 @@
     <div class="ui">
         <div class="header">⚙️ Noros Engine</div>
         
+        <div class="gesture-hint">
+            👆 Glissez pour tourner<br>
+            🤏 Pincez pour zoomer
+        </div>
+        
         <div class="controls">
             <button id="importBtn">📤 Importer</button>
             <button id="resetBtn">🔄 Reset</button>
         </div>
 
         <div class="info">
-            💡 Glissez pour tourner • Pincez pour zoomer
+            💡 Écran 100% tactile - Glissez n'importe où pour tourner l'objet
         </div>
     </div>
 
@@ -154,6 +193,7 @@
         });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.domElement.style.touchAction = 'none';
 
         // Lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
@@ -172,9 +212,13 @@
         controls.autoRotate = true;
         controls.autoRotateSpeed = 4;
         controls.enableZoom = true;
-        controls.enablePan = false;
+        controls.enablePan = true;
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
         controls.minDistance = 1.5;
         controls.maxDistance = 10;
+        
+        // Touch controls configuration
         controls.touches = {
             ONE: THREE.TOUCH.ROTATE,
             TWO: THREE.TOUCH.DOLLY_PAN
@@ -189,12 +233,44 @@
         let currentModel = null;
         const loader = new GLTFLoader();
 
+        // Touch event handlers
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            controls.autoRotate = false;
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', () => {
+            setTimeout(() => {
+                controls.autoRotate = true;
+            }, 1000);
+        }, { passive: true });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
         // Button events
         document.getElementById('importBtn').addEventListener('click', () => {
             document.getElementById('fileInput').click();
         });
 
+        document.getElementById('importBtn').addEventListener('touchend', (e) => {
+            e.stopPropagation();
+        });
+
         document.getElementById('resetBtn').addEventListener('click', () => {
+            resetScene();
+        });
+
+        document.getElementById('resetBtn').addEventListener('touchend', (e) => {
+            e.stopPropagation();
+        });
+
+        function resetScene() {
             // Remove model
             if (currentModel) {
                 scene.remove(currentModel);
@@ -215,7 +291,8 @@
             // Reset camera
             camera.position.z = 3;
             controls.reset();
-        });
+            controls.autoRotate = true;
+        }
 
         document.getElementById('fileInput').addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -256,6 +333,7 @@
                 camera.position.z = cameraZ;
                 camera.updateProjectionMatrix();
                 controls.reset();
+                controls.autoRotate = true;
             });
 
             document.getElementById('fileInput').value = '';
@@ -268,6 +346,11 @@
             camera.aspect = width / height;
             camera.updateProjectionMatrix();
             renderer.setSize(width, height);
+        });
+
+        // Prevent default touch behaviors
+        document.addEventListener('gesturestart', (e) => {
+            e.preventDefault();
         });
 
         // Animation loop
